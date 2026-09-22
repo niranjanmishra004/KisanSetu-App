@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { dedupePriceRows, getAllPricesProgressive, getCachedPrices, getLocations, searchBackendProducts, storePrices } from "../lib/api.js";
 import { useLang } from "../lib/i18n.jsx";
-import { TrendIcon } from "../components/bits.jsx";
 
 export default function Market() {
   const { t, cropName, cropLocal, categoryName, unitName } = useLang();
@@ -36,6 +35,8 @@ export default function Market() {
     }
   }
   const [allPrices, setAllPrices] = useState(() => getCachedPrices(initStateSel()));
+  const [loaded, setLoaded] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [q, setQ] = useState(readP("q"));
   const [stateSel, setStateSel] = useState(initStateSel());
   const [states, setStates] = useState([]);
@@ -58,6 +59,7 @@ export default function Market() {
     // New state scope invalidates the previous query's backend rows until
     // the debounced search below refetches them for the new scope.
     setBackendRows([]);
+    setLoaded(false);
     getAllPricesProgressive(stateSel, {
       signal: ctrl.signal,
       onBatch: (batch) => {
@@ -65,14 +67,17 @@ export default function Market() {
       },
     }).then((rows) => {
       if (cancelled) return;
+      setLoaded(true);
       setAllPrices(rows);
       storePrices(stateSel, rows);
+    }).catch(() => {
+      if (!cancelled) setLoaded(true);
     });
     return () => {
       cancelled = true;
       ctrl.abort();
     };
-  }, [stateSel]);
+  }, [stateSel, attempt]);
 
   useEffect(() => {
     setQ(readP("q"));
@@ -139,11 +144,13 @@ export default function Market() {
       <div className="container">
         <h1>{t("mkt.title")}</h1>
         <p className="muted" id="mktStatus">
-          {allPrices.length
-            ? (stateSel
-                ? t("mkt.showingState", { state: stateSel })
-                : t("mkt.showingIndia"))
-            : t("c.loading")}
+          {!loaded
+            ? t("c.loading")
+            : allPrices.length
+              ? (stateSel
+                  ? t("mkt.showingState", { state: stateSel })
+                  : t("mkt.showingIndia"))
+              : (q.trim() ? t("mkt.empty") : t("live.unavailable"))}
         </p>
 
         <div className="filters">
@@ -185,26 +192,24 @@ export default function Market() {
                 <span className="price">₹{price.modal}</span>
                 <span className="unit">/{unitName(price.unit)}</span>
               </div>
-              <span className={`trend ${price.trendDir}`}>
-                <TrendIcon dir={price.trendDir} /> {price.trendPct}%
-              </span>
+              <span className="trend stable">{price.source}</span>
               <div className="updated">
-                {t("mkt.updated", {
-                  ago:
-                    price.updatedMinsAgo < 60
-                      ? t("time.mAgo", { n: price.updatedMinsAgo })
-                      : t("time.hAgo", { n: Math.round(price.updatedMinsAgo / 60) }),
-                })}
-                {price.live && price.source ? ` · ${price.source}` : ""}
+                {price.marketsCount != null ? t("live.markets", { n: price.marketsCount }) : ""}
+                {price.arrivalDate ? ` · ${t("live.arrival", { v: price.arrivalDate })}` : ""}
               </div>
             </Link>
           ))}
         </div>
-        <div className="empty" id="emptyState" style={{ display: list.length ? "none" : "block" }}>
+        <div className="empty" id="emptyState" style={{ display: list.length || !loaded ? "none" : "block" }}>
           <div className="icon">
             <i className="bi bi-search" aria-hidden="true"></i>
           </div>
-          <p>{t("mkt.empty")}</p>
+          <p>{q.trim() ? t("mkt.empty") : t("live.unavailable")}</p>
+          {!q.trim() && (
+            <button type="button" className="btn btn-outline" onClick={() => setAttempt((a) => a + 1)}>
+              {t("live.retry")}
+            </button>
+          )}
         </div>
       </div>
     </main>

@@ -1,8 +1,11 @@
 /* =========================================================
-   KisanSetu — Mock Data Layer
-   All data below is DEMO DATA for frontend development only.
-   Replace with real API responses once the Laravel backend
-   is connected (see js/api.js).
+   KisanSetu — Reference Data (NOT prices)
+   MOCK_CROPS is only a name catalog (crop names, local names,
+   aliases, categories) used for search and stable /crop links.
+   LOCATIONS is the State→District→Town picker directory.
+   ALL PRICES come from the live Agmarknet-backed API only —
+   there are no demo prices in this app. Anything without a live
+   backend entry is hidden, never faked.
    ========================================================= */
 
 const MOCK_CROPS = [
@@ -27,56 +30,7 @@ const MOCK_CROPS = [
   { id: "apple", name: "Apple", local: "Seb", category: "Fruit", units: ["kg", "quintal"] , aliases: ["seb"]},
 ];
 
-// Current price snapshot per crop (modal price = most representative)
-const MOCK_MARKET_PRICES = {
-  tomato:     { min: 21, max: 28, modal: 25, unit: "kg", market: "New Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 10, trendPct: 8.5, trendDir: "rise" },
-  potato:     { min: 19, max: 24, modal: 22, unit: "kg", market: "Sealdah Wholesale Market", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 25, trendPct: 3.1, trendDir: "fall" },
-  onion:      { min: 27, max: 33, modal: 30, unit: "kg", market: "New Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 15, trendPct: 1.2, trendDir: "stable" },
-  rice:       { min: 32, max: 44, modal: 38, unit: "kg", market: "Burdwan Grain Market", state: "West Bengal", district: "Purba Bardhaman", source: "Demo KisanSetu Feed", updatedMinsAgo: 120, trendPct: 0.8, trendDir: "stable" },
-  wheat:      { min: 24, max: 29, modal: 26, unit: "kg", market: "Asansol Grain Market", state: "West Bengal", district: "Paschim Bardhaman", source: "Demo KisanSetu Feed", updatedMinsAgo: 90, trendPct: 2.4, trendDir: "rise" },
-  maize:      { min: 18, max: 23, modal: 20, unit: "kg", market: "Malda Market", state: "West Bengal", district: "Malda", source: "Demo KisanSetu Feed", updatedMinsAgo: 200, trendPct: 1.9, trendDir: "fall" },
-  mustard:    { min: 55, max: 64, modal: 59, unit: "kg", market: "Krishnanagar Market", state: "West Bengal", district: "Nadia", source: "Demo KisanSetu Feed", updatedMinsAgo: 180, trendPct: 4.6, trendDir: "rise" },
-  soybean:    { min: 42, max: 49, modal: 45, unit: "kg", market: "Bankura Market", state: "West Bengal", district: "Bankura", source: "Demo KisanSetu Feed", updatedMinsAgo: 300, trendPct: 0.5, trendDir: "stable" },
-  cotton:     { min: 62, max: 71, modal: 66, unit: "kg", market: "Berhampore Market", state: "West Bengal", district: "Murshidabad", source: "Demo KisanSetu Feed", updatedMinsAgo: 240, trendPct: 3.8, trendDir: "fall" },
-  sugarcane:  { min: 3, max: 4, modal: 3.5, unit: "kg", market: "Cooch Behar Market", state: "West Bengal", district: "Cooch Behar", source: "Demo KisanSetu Feed", updatedMinsAgo: 400, trendPct: 0.3, trendDir: "stable" },
-  brinjal:    { min: 24, max: 32, modal: 28, unit: "kg", market: "New Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 40, trendPct: 5.2, trendDir: "rise" },
-  cabbage:    { min: 14, max: 19, modal: 16, unit: "kg", market: "Sealdah Wholesale Market", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 60, trendPct: 2.0, trendDir: "fall" },
-  cauliflower:{ min: 18, max: 24, modal: 21, unit: "kg", market: "Sealdah Wholesale Market", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 55, trendPct: 1.4, trendDir: "stable" },
-  chilli:     { min: 48, max: 60, modal: 54, unit: "kg", market: "New Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 35, trendPct: 6.1, trendDir: "rise" },
-  garlic:     { min: 90, max: 115, modal: 102, unit: "kg", market: "New Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 80, trendPct: 2.8, trendDir: "fall" },
-  ginger:     { min: 68, max: 82, modal: 75, unit: "kg", market: "New Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 95, trendPct: 1.1, trendDir: "stable" },
-  banana:     { min: 12, max: 17, modal: 14, unit: "kg", market: "Fruit Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 130, trendPct: 0.9, trendDir: "stable" },
-  mango:      { min: 35, max: 55, modal: 44, unit: "kg", market: "Fruit Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 150, trendPct: 7.3, trendDir: "rise" },
-  apple:      { min: 90, max: 130, modal: 112, unit: "kg", market: "Fruit Market, Kolkata", state: "West Bengal", district: "Kolkata", source: "Demo KisanSetu Feed", updatedMinsAgo: 170, trendPct: 3.3, trendDir: "fall" },
-};
-
-// Generate ~1 year of daily-ish demo history for every crop (deterministic, no backend needed)
-function generatePriceHistory(basePrice, days) {
-  const points = [];
-  let price = basePrice * 0.9;
-  const today = new Date();
-  for (let i = days; i >= 0; i--) {
-    const seed = Math.sin(i * 12.9898) * 43758.5453;
-    const wobble = (seed - Math.floor(seed) - 0.5) * (basePrice * 0.06);
-    const drift = Math.sin(i / 18) * (basePrice * 0.08);
-    price = Math.max(basePrice * 0.6, basePrice + drift + wobble);
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    points.push({ date: d.toISOString().slice(0, 10), price: Math.round(price * 100) / 100 });
-  }
-  return points;
-}
-
-const MOCK_PRICE_HISTORY = {};
-Object.keys(MOCK_MARKET_PRICES).forEach((cropId) => {
-  MOCK_PRICE_HISTORY[cropId] = generatePriceHistory(MOCK_MARKET_PRICES[cropId].modal, 365);
-});
-
-let MOCK_ALERTS = [
-  { id: 1, crop: "tomato", location: "Kolkata", condition: "above", threshold: 30, unit: "kg", active: true },
-  { id: 2, crop: "potato", location: "Kolkata", condition: "below", threshold: 18, unit: "kg", active: true },
-  { id: 3, crop: "onion", location: "Kolkata", condition: "percent_up", threshold: 10, unit: "%", active: false },
-];
+// NOTE: no price tables here — prices are fetched live from the API only.
 
 const LOCATIONS = {
   "Andhra Pradesh": {
@@ -942,17 +896,9 @@ const LOCATIONS = {
 
 const DEMO_LOCATION = { locality: "New Market", district: "Kolkata", state: "West Bengal" };
 
-// ---- ESM exports (React port; data above is byte-for-byte the static demo data) ----
+// ---- ESM exports: name catalog + location directory only (no prices) ----
 export {
   MOCK_CROPS,
-  MOCK_MARKET_PRICES,
-  MOCK_PRICE_HISTORY,
-  MOCK_ALERTS,
   LOCATIONS,
   DEMO_LOCATION,
-  generatePriceHistory,
 };
-
-export function setMockAlerts(next) {
-  MOCK_ALERTS = next;
-}

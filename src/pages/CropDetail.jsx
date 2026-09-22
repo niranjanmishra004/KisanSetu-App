@@ -3,17 +3,11 @@ import { useSearchParams } from "react-router-dom";
 import {
   getCropById,
   getCropPrice,
-  getPriceHistory,
   getSavedLocation,
   createAlert,
 } from "../lib/api.js";
 import { useLang } from "../lib/i18n.jsx";
 import { Modal } from "../components/chrome.jsx";
-import { TrendIcon } from "../components/bits.jsx";
-import PriceChart from "../components/PriceChart.jsx";
-
-const RANGES = [7, 30, 90, 180, 365];
-const RANGE_LABELS = { 7: "7d", 30: "30d", 90: "3m", 180: "6m", 365: "1y" };
 
 function unitToKg(qty, unit) {
   if (unit === "quintal") return qty * 100;
@@ -30,12 +24,11 @@ export default function CropDetail() {
   const [crop, setCrop] = useState(null);
   const [price, setPrice] = useState(null);
   const [notFound, setNotFound] = useState(false);
+  const [priceMissing, setPriceMissing] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   const [qty, setQty] = useState(500);
   const [unit, setUnit] = useState("kg");
-
-  const [days, setDays] = useState(90);
-  const [history, setHistory] = useState([]);
 
   const [alertOpen, setAlertOpen] = useState(false);
   const [alertCondition, setAlertCondition] = useState("above");
@@ -45,14 +38,24 @@ export default function CropDetail() {
     document.title = "Crop — KisanSetu";
     let cancelled = false;
     async function load() {
-      const [c, p] = await Promise.all([getCropById(cropId), getCropPrice(cropId, stateParam)]);
+      // NOTE: no demo fallback. Unknown crop → "not found".
+      // Known crop but no live price (offline / no backend entry) →
+      // honest "unavailable" state with retry.
+      const c = await getCropById(cropId);
       if (cancelled) return;
-      if (!c || !p) {
+      if (!c) {
         setNotFound(true);
         return;
       }
       setNotFound(false);
       setCrop(c);
+      const p = await getCropPrice(cropId, stateParam);
+      if (cancelled) return;
+      if (!p) {
+        setPriceMissing(true);
+        return;
+      }
+      setPriceMissing(false);
       setPrice(p);
       document.title = `${c.name} — KisanSetu`;
     }
@@ -60,11 +63,7 @@ export default function CropDetail() {
     return () => {
       cancelled = true;
     };
-  }, [cropId, stateParam]);
-
-  useEffect(() => {
-    getPriceHistory(cropId, days, stateParam).then(setHistory);
-  }, [cropId, days, stateParam]);
+  }, [cropId, stateParam, attempt]);
 
   async function submitAlert(e) {
     e.preventDefault();
@@ -91,6 +90,21 @@ export default function CropDetail() {
       <main id="main" className="section-tight">
         <div className="container">
           <h1 id="cropName">{t("crop.notFound")}</h1>
+        </div>
+      </main>
+    );
+  }
+
+  if (priceMissing) {
+    return (
+      <main id="main" className="section-tight">
+        <div className="container">
+          <h1 id="cropName">{crop ? cropName(crop) : t("crop.notFound")}</h1>
+          <p className="muted">{t("crop.noPrice")}</p>
+          <p className="muted text-sm">{t("live.unavailable")}</p>
+          <button type="button" className="btn btn-outline" onClick={() => setAttempt((a) => a + 1)}>
+            {t("live.retry")}
+          </button>
         </div>
       </main>
     );
@@ -151,17 +165,13 @@ export default function CropDetail() {
                   </span>
                 </div>
               </div>
-              <span className={`trend ${price.trendDir}`} id="trendBadge">
-                <TrendIcon dir={price.trendDir} /> {price.trendPct}%
+              <span className="trend stable" id="trendBadge">
+                {price.source}
               </span>
             </div>
             <p className="muted text-sm mt-2 mb-0" id="lastUpdated">
-              {t("crop.lastUpd", {
-                ago:
-                  price.updatedMinsAgo < 60
-                    ? t("time.minAgo", { n: price.updatedMinsAgo })
-                    : t("time.hoursAgo", { n: Math.round(price.updatedMinsAgo / 60) }),
-              })}
+              {price.marketsCount != null ? t("live.markets", { n: price.marketsCount }) : ""}
+              {price.arrivalDate ? ` · ${t("live.arrival", { v: price.arrivalDate })}` : ""}
             </p>
 
             <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "20px 0" }} />
@@ -233,49 +243,17 @@ export default function CropDetail() {
               ₹{price.min}–₹{price.max}/{unitName(price.unit)}
             </div>
             <p className="muted text-sm">{t("crop.rangeNote")}</p>
-            <div className="grid grid-2 mt-3">
-              <div className="stat">
-                <div className="label">{t("crop.sell")}</div>
-                <div className="value" id="sellEstimate" style={{ fontSize: "1.2rem" }}>
-                  ₹{(price.modal - 2).toFixed(0)}–₹{(price.modal + 2).toFixed(0)}
-                </div>
-              </div>
-              <div className="stat">
-                <div className="label">{t("crop.buy")}</div>
-                <div className="value" id="buyEstimate" style={{ fontSize: "1.2rem" }}>
-                  ₹{(price.min).toFixed(0)}–₹{(price.modal).toFixed(0)}
-                </div>
-              </div>
-            </div>
             <hr style={{ border: "none", borderTop: "1px solid var(--border)", margin: "20px 0" }} />
             <div className="muted text-sm">
               <div id="marketName">{t("crop.mkt", { v: price.market })}</div>
-              <div id="marketLoc">
-                {t("crop.loc", { v: `${price.district}, ${price.state}` })}
-              </div>
+              {price.marketsCount != null && (
+                <div id="marketCount">{t("live.markets", { n: price.marketsCount })}</div>
+              )}
+              {price.arrivalDate && (
+                <div id="marketArrival">{t("live.arrival", { v: price.arrivalDate })}</div>
+              )}
               <div id="marketSource">{t("crop.src", { v: price.source })}</div>
             </div>
-          </div>
-        </div>
-
-        <div className="card mt-5">
-          <div className="card-head">
-            <h3>{t("crop.hist")}</h3>
-            <div className="flex gap-2" id="rangeButtons">
-              {RANGES.map((d) => (
-                <button
-                  key={d}
-                  className={`btn btn-sm ${days === d ? "btn-primary" : "btn-outline"}`}
-                  data-days={d}
-                  onClick={() => setDays(d)}
-                >
-                  {RANGE_LABELS[d]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{ height: 280 }}>
-            <PriceChart points={history} unit={unitName(price.unit)} />
           </div>
         </div>
       </div>

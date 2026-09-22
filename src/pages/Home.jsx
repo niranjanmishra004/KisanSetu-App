@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { getAllPricesProgressive, getCachedPrices, dedupePriceRows, getLocations, detectLocation, saveLocation } from "../lib/api.js";
 import { LanguageSelect } from "../components/chrome.jsx";
-import { MOCK_CROPS, MOCK_MARKET_PRICES } from "../data/mockData.js";
 import { useLang } from "../lib/i18n.jsx";
-import { TrendIcon } from "../components/bits.jsx";
 
 function readSavedLocationRaw() {
   try {
@@ -15,16 +13,12 @@ function readSavedLocationRaw() {
 }
 
 function topTrending(rows) {
+  // Most-reported crops first — marketsCount is a real backend signal.
+  // (The API exposes no trend data, so nothing here is estimated.)
   return [...(rows || [])]
     .filter((r) => r && r.crop && r.price)
-    .sort((a, b) => Math.abs(b.price.trendPct) - Math.abs(a.price.trendPct))
+    .sort((a, b) => (b.price.marketsCount || 0) - (a.price.marketsCount || 0))
     .slice(0, 6);
-}
-
-function demoRows() {
-  return MOCK_CROPS.map((c) => ({ crop: c, price: MOCK_MARKET_PRICES[c.id] })).filter(
-    (p) => p.price
-  );
 }
 
 export default function Home() {
@@ -32,9 +26,11 @@ export default function Home() {
   const { openLocation } = useOutletContext();
   const navigate = useNavigate();
   const [hero, setHero] = useState("");
-  // Seed from last visit's cache so the strip never paints empty,
-  // then stream live rows in below.
+  // Seed from last visit's cache (genuinely observed live prices),
+  // then stream fresh live rows in below.
   const [trending, setTrending] = useState(() => topTrending(getCachedPrices("")));
+  const [loaded, setLoaded] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   // Mobile-only dropdown for trending crops (desktop always shows the strip)
   const [trendOpen, setTrendOpen] = useState(false);
   // Optional state filter for the hero search — empty means "All India".
@@ -53,8 +49,10 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    // Stream live rows in per crop (first paint fast), fall back to demo
-    // data if the backend returns nothing — the strip must never go blank.
+    setLoaded(false);
+    // Stream live rows in per crop (first paint fast). No demo fallback:
+    // an empty result keeps last-known real prices if any, else shows an
+    // honest message with a retry button.
     getAllPricesProgressive("", {
       onBatch: (batch) => {
         if (!cancelled && batch.length) {
@@ -63,18 +61,17 @@ export default function Home() {
       },
     }).then((rows) => {
       if (cancelled) return;
+      setLoaded(true);
       if (rows && rows.length) {
         setTrending(topTrending(rows));
-      } else {
-        setTrending((prev) =>
-          prev.length ? prev : topTrending(demoRows())
-        );
       }
+    }).catch(() => {
+      if (!cancelled) setLoaded(true);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
 
   useEffect(() => {
     const saved = readSavedLocationRaw();
@@ -270,12 +267,21 @@ export default function Home() {
                   <span className="price">₹{price.modal}</span>
                   <span className="unit">/{unitName(price.unit)}</span>
                 </div>
-                <span className={`trend ${price.trendDir}`}>
-                  <TrendIcon dir={price.trendDir} /> {price.trendPct}%
-                </span>
+                <span className="trend stable">{price.source}</span>
               </Link>
             ))}
           </div>
+          {loaded && trending.length === 0 && (
+            <div className="empty">
+              <div className="icon">
+                <i className="bi bi-cloud-slash" aria-hidden="true"></i>
+              </div>
+              <p>{t("live.unavailable")}</p>
+              <button type="button" className="btn btn-outline" onClick={() => setAttempt((a) => a + 1)}>
+                {t("live.retry")}
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

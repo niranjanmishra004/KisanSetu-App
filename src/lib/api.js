@@ -1,13 +1,11 @@
-/* KisanSetu — API Layer (currently mock-backed).
-   Every function returns a Promise like fetch(). Swap bodies for
-   real Laravel endpoints later without touching callers. */
+/* KisanSetu — API Layer (LIVE ONLY).
+   Every price on screen comes from the Agmarknet-backed FastAPI service.
+   There is NO demo/fallback price data anywhere in this app: if the API
+   is unreachable or has no entry for a crop, the crop is hidden and pages
+   show an honest "no live price" state instead of a fake number. */
 import { Capacitor } from "@capacitor/core";
 import {
   MOCK_CROPS,
-  MOCK_MARKET_PRICES,
-  MOCK_PRICE_HISTORY,
-  MOCK_ALERTS,
-  setMockAlerts,
   LOCATIONS,
   DEMO_LOCATION,
 } from "../data/mockData.js";
@@ -28,18 +26,17 @@ function delay(ms = 120) {
    by the Vercel function `api/market.js`. This avoids the Render API's
    CORS restrictions so the browser can read live data directly.
 
-   The upstream base can still be overridden at build/dev time with the
-   VITE_MARKET_API_BASE env var when you need to point elsewhere (e.g.
-   http://127.0.0.1:8000 to hit a local backend).
+    The upstream base can still be overridden at build/dev time with the
+    VITE_MARKET_API_BASE env var when you need to point elsewhere (e.g.
+    http://127.0.0.1:8000 to hit a local backend).
 
-    Every lookup is wrapped so that if the API is unreachable (offline,
-    Render cold-start, proxy down, non-JSON fallback page) we transparently
-    fall back to the demo MOCK data — the app never breaks and no page
-    needs to know which source answered. Only an affirmative miss from the
-    API itself (404 / empty list for a non-mandi crop) hides that crop
-    rather than showing a fake price. Flip USE_LIVE_MARKET_API to
-    false to force pure demo mode.
-   ===================================================================== */
+    Result contract (no demo data anywhere):
+    - live record  → show it, badged with its source.
+    - API affirmative miss (404 + JSON / empty list) → hide the crop.
+    - transport failure (offline, cold start, proxy down) → return
+      null/undefined so callers render an honest "unavailable" state.
+      NOTHING is ever invented.
+    ===================================================================== */
 const MARKET_API_BASE =
   (typeof import.meta !== "undefined" &&
     import.meta.env &&
@@ -48,12 +45,11 @@ const MARKET_API_BASE =
   // CORS). Native Android has no Vercel proxy, so it calls the FastAPI
   // backend directly over HTTPS (public URL, no secret — secure).
   // NOTE: the backend must allow origin `capacitor://localhost` in CORS
-  // (farmer_api repo) or native live lookups will fail and fall back to demo.
+  // (farmer_api repo) or native live lookups will fail.
   (Capacitor.isNativePlatform()
     ? "https://farmer-api-ooi2.onrender.com"
     : "/api/market");
 
-const USE_LIVE_MARKET_API = true;
 const MARKET_CACHE_TTL_MS = 10 * 60 * 1000; // client-side reuse window
 const marketCache = new Map();
 
@@ -121,11 +117,11 @@ export function backendRecordToCrop(live) {
  * single-item helper, but with an array:
  *  - array     → the API affirmatively returned prices (may be empty → miss).
  *  - null      → affirmative miss (404 with JSON body / empty list).
- *  - undefined → transport failure (outage). Callers fall back to demo data.
+ *  - undefined → transport failure (outage). Callers render an honest
+ *    "unavailable" state — never demo data.
  * Transport failures are NOT cached, so the next lookup retries the API.
  */
 async function fetchBackendPrices(name, { state = "", live = true } = {}) {
-  if (!USE_LIVE_MARKET_API) return null;
   const cached = marketCacheGet(name, state, live);
   if (cached !== undefined) return cached;
   const params = new URLSearchParams({ name });
@@ -142,9 +138,8 @@ async function fetchBackendPrices(name, { state = "", live = true } = {}) {
       // 404 needs a closer look: the upstream API reports "no such product"
       // as 404 + JSON (`{"detail": …}`) — that is an affirmative miss, hide
       // the crop. But a 404 with a non-JSON body means the proxy route
-      // itself is missing (Vercel's HTML 404 page) — that is an outage, so
-      // fall back to demo data instead of blanking the page.
-      // Any other status (502/5xx from the proxy, etc.) = outage → fallback.
+      // itself is missing (Vercel's HTML 404 page) — that is an outage.
+      // Any other status (502/5xx from the proxy, etc.) = outage.
       if (res.status === 404) {
         const text = await res.text();
         try {
@@ -177,7 +172,7 @@ async function fetchBackendPricesBest(name, state, opts = {}) {
   // Non-empty scoped result wins. Empty/miss/error falls back to All-India
   // so a state with no mandi data still shows the national average instead
   // of hiding the crop. Transport failures on BOTH scopes stay undefined
-  // so callers can fall back to demo data.
+  // so callers can render an honest "unavailable" state.
   if (Array.isArray(scoped) && scoped.length) return scoped;
   return fetchBackendPrices(name, { state: "", ...opts });
 }
@@ -190,8 +185,11 @@ async function fetchBackendPriceBest(name, state, opts = {}) {
   return items[0] || null;
 }
 
-/** Map a backend ProductPrice onto the shape the existing pages already use. */
-function liveToPrice(live, mock) {
+/** Map a backend ProductPrice onto the shape the pages use.
+ *  Every field comes from the API response — no demo trend/age numbers.
+ *  trendPct/trendDir/updatedMinsAgo are always null: the backend exposes
+ *  no trend or timestamp, and we refuse to invent them. */
+function liveToPrice(live) {
   const modal = Number(live.market_price_per_kg);
   const unit = live.unit || "kg";
   return {
@@ -199,21 +197,18 @@ function liveToPrice(live, mock) {
     max: live.max_price_per_kg != null ? Number(live.max_price_per_kg) : modal,
     modal,
     unit,
-    market:
-      live.matched_commodity
-        ? `${live.matched_commodity} · Mandi`
-        : mock ? mock.market : "Wholesale Mandi",
-    state: mock ? mock.state : "",
-    district: mock ? mock.district : "",
+    market: live.matched_commodity ? `${live.matched_commodity} · Mandi` : "Wholesale Mandi",
+    state: "",
+    district: "",
     source:
       live.source === "live"
         ? "Live · Agmarknet"
         : live.source === "cache"
           ? "Agmarknet · cached"
           : "Static",
-    updatedMinsAgo: mock ? mock.updatedMinsAgo : 0,
-    trendPct: mock ? mock.trendPct : 0,
-    trendDir: mock ? mock.trendDir : "stable",
+    updatedMinsAgo: null,
+    trendPct: null,
+    trendDir: null,
     live: true,
     arrivalDate: live.arrival_date,
     marketsCount: live.markets_count,
@@ -231,10 +226,10 @@ function liveToPrice(live, mock) {
  * category and stable `/crop?crop=<id>` links); every other record becomes
  * a synthetic crop so no backend product is silently dropped.
  */
-function backendRowFor(live, localCrop, mock) {
-  if (localCrop) return { crop: localCrop, price: liveToPrice(live, mock) };
+function backendRowFor(live, localCrop) {
+  if (localCrop) return { crop: localCrop, price: liveToPrice(live) };
   const crop = backendRecordToCrop(live);
-  return { crop, price: liveToPrice(live, undefined) };
+  return { crop, price: liveToPrice(live) };
 }
 
 /**
@@ -243,21 +238,21 @@ function backendRowFor(live, localCrop, mock) {
  * 411-product catalog is reachable even though the local directory only
  * lists 19 crops. Single network request per query (no 411-request fan-out).
  *
- * Returns [] for affirmative misses AND for transport failures (callers keep
- * showing local results so the page never goes blank on outage).
+ * Returns [] for affirmative misses AND for transport failures (callers
+ * render an honest empty/unavailable state — never demo numbers).
  */
 export async function searchBackendProducts(query, { state = "", live = true } = {}) {
   const q = (query || "").trim();
-  if (!q || !USE_LIVE_MARKET_API) return [];
+  if (!q) return [];
   const st = state !== undefined ? state : currentState();
   const items = await fetchBackendPricesBest(q, st, { live });
   if (!Array.isArray(items) || !items.length) return [];
   const rows = items.map((item) => {
     const slug = slugifyProductName(item.product_name);
     const local = MOCK_CROPS.find((c) => c.id === slug || c.name.toLowerCase() === String(item.product_name || "").toLowerCase());
-    if (local) return { crop: local, price: liveToPrice(item, MOCK_MARKET_PRICES[local.id]) };
+    if (local) return { crop: local, price: liveToPrice(item) };
     const crop = backendRecordToCrop(item);
-    return { crop, price: liveToPrice(item, undefined) };
+    return { crop, price: liveToPrice(item) };
   });
   for (const r of rows) noteObservation(r.crop.id, r.price.modal);
   return rows;
@@ -306,8 +301,8 @@ export async function getCropById(cropId) {
   if (local) return local;
   // Backend-only product (e.g. "raw-honey", "green-cabbage"): synthesize a
   // crop from the live catalog so /crop?crop=<id> deep-links keep working.
-  // No network on outage → null (callers show "not found", never a crash).
-  if (!USE_LIVE_MARKET_API || !cropId) return null;
+  // No network on outage → null (callers show "unavailable", never a crash).
+  if (!cropId) return null;
   try {
     const nameGuess = String(cropId).replace(/-/g, " ");
     const items = await fetchBackendPricesBest(nameGuess, "");
@@ -334,56 +329,37 @@ export async function getCropById(cropId) {
 
 export async function getCropPrice(cropId, state) {
   const crop = MOCK_CROPS.find((c) => c.id === cropId);
-  if (USE_LIVE_MARKET_API && crop) {
+  if (crop) {
     // Use the passed state as-is ("" = All India). Only fall back to the saved
     // location's state when no state was provided at all (undefined).
     const st = state !== undefined ? state : currentState();
     const live = await fetchBackendPriceBest(crop.name, st);
-    if (live === undefined) {
-      // Outage (not an affirmative miss): show demo data, badged as such,
-      // so the page never goes blank. Affirmative misses (null) stay hidden
-      // rather than showing a fake price.
-      await delay();
-      const mock = MOCK_MARKET_PRICES[cropId];
-      return mock ? { cropId, ...mock, live: false } : null;
-    }
-    if (live) {
-      noteObservation(cropId, live.market_price_per_kg);
-      return { cropId, ...liveToPrice(live, MOCK_MARKET_PRICES[cropId]) };
-    }
-    return null;
+    // Outage (undefined) AND affirmative miss (null) both yield null:
+    // no demo prices, ever. Callers render "unavailable".
+    if (!live) return null;
+    noteObservation(cropId, live.market_price_per_kg);
+    return { cropId, ...liveToPrice(live) };
   }
-  if (USE_LIVE_MARKET_API && !crop && cropId) {
+  if (cropId) {
     // Backend-only product id (synthetic crop): look it up by name and pick
     // the exact product when the backend returns several matches.
     const st = state !== undefined ? state : currentState();
     const nameGuess = String(cropId).replace(/-/g, " ");
     const items = await fetchBackendPricesBest(nameGuess, st);
-    if (items === undefined) return null; // outage → hide, Market keeps locals
-    if (Array.isArray(items) && items.length) {
-      const slug = slugifyProductName(cropId);
-      const exact =
-        items.find((it) => slugifyProductName(it.product_name) === slug) || items[0];
-      if (exact) {
-        noteObservation(cropId, exact.market_price_per_kg);
-        return { cropId, ...liveToPrice(exact, undefined) };
-      }
+    if (!Array.isArray(items) || !items.length) return null;
+    const slug = slugifyProductName(cropId);
+    const exact =
+      items.find((it) => slugifyProductName(it.product_name) === slug) || items[0];
+    if (exact) {
+      noteObservation(cropId, exact.market_price_per_kg);
+      return { cropId, ...liveToPrice(exact) };
     }
-    return null;
   }
-  await delay();
-  const mock = MOCK_MARKET_PRICES[cropId];
-  return mock ? { cropId, ...mock } : null;
+  return null;
 }
 
 export async function getAllPrices(state) {
   const st = state !== undefined ? state : currentState();
-  if (!USE_LIVE_MARKET_API) {
-    await delay();
-    return MOCK_CROPS.map((c) => ({ crop: c, price: MOCK_MARKET_PRICES[c.id] })).filter(
-      (p) => p.price
-    );
-  }
   // Single code path with the progressive loader below (no onBatch → one
   // promise, same rows as before). Keeps Home/search callers unchanged.
   return getAllPricesProgressive(st);
@@ -393,9 +369,9 @@ export async function getAllPrices(state) {
 
 const PRICES_STORE_KEY = "kisansetu_prices_v1";
 
-/** Map one local crop + its backend records to 1..n display rows. */
+/** Map one local crop + its backend records to 1..n display rows.
+ *  Miss (null) or outage (undefined) → [] (hide, never fake). */
 function rowsForLocalCrop(c, lives) {
-  const mock = MOCK_MARKET_PRICES[c.id];
   // Exact product-name match (when present) keeps the familiar local card;
   // otherwise the first record is representative (e.g. Green Cabbage price
   // on the Cabbage card) and the rest become synthetic variant cards.
@@ -409,13 +385,10 @@ function rowsForLocalCrop(c, lives) {
         : lives;
     return ordered.map((live, idx) =>
       idx === 0
-        ? { crop: c, price: liveToPrice(live, mock) }
-        : backendRowFor(live, null, undefined)
+        ? { crop: c, price: liveToPrice(live) }
+        : backendRowFor(live, null)
     );
   }
-  // Affirmative miss (null) → hide the crop (return []). Outage
-  // (undefined) → demo fallback so the grid never goes blank.
-  if (lives === undefined && mock) return [{ crop: c, price: { ...mock, live: false } }];
   return [];
 }
 
@@ -430,15 +403,6 @@ function rowsForLocalCrop(c, lives) {
  */
 export async function getAllPricesProgressive(state, { onBatch, signal } = {}) {
   const st = state !== undefined ? state : currentState();
-  if (!USE_LIVE_MARKET_API) {
-    await delay();
-    const rows = MOCK_CROPS.map((c) => ({
-      crop: c,
-      price: MOCK_MARKET_PRICES[c.id],
-    })).filter((p) => p.price);
-    if (!signal?.aborted) onBatch?.(rows);
-    return rows;
-  }
   const collected = [];
   let next = 0;
   async function worker() {
@@ -491,7 +455,6 @@ export function storePrices(state, rows) {
  * opens Market. Never throws; result is ignored — normal lookups retry.
  */
 export function warmMarketApi() {
-  if (!USE_LIVE_MARKET_API) return;
   try {
     void fetch(`${MARKET_API_BASE}/health`, { cache: "no-store" }).catch(() => {});
   } catch {
@@ -542,32 +505,11 @@ export async function searchCropsLive(query, { state = "" } = {}) {
   return [...local, ...extras];
 }
 
-export async function getPriceHistory(cropId, rangeDays = 30, state) {
-  const full = MOCK_PRICE_HISTORY[cropId] || [];
-  await delay(40);
-  // Anchor the demo history to the current (possibly live) modal price so the
-  // chart and the price card always tell the same story.
-  const mockBase = MOCK_MARKET_PRICES[cropId]?.modal || 1;
-  const live = await getCropPrice(cropId, state);
-  const base = (live && live.modal) || mockBase;
-  if (!full.length) {
-    // Backend-only product (no demo curve): synthesize a flat curve around
-    // the live price so the chart still renders instead of going blank.
-    const days = Math.max(1, Math.min(365, Number(rangeDays) || 30));
-    const today = new Date();
-    const points = [];
-    for (let i = days; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      points.push({ date: d.toISOString().slice(0, 10), price: Math.round(base * 100) / 100 });
-    }
-    return points.slice(Math.max(0, points.length - rangeDays));
-  }
-  const ratio = base / mockBase;
-  const scaled =
-    ratio === 1 ? full : full.map((p) => ({ ...p, price: Math.round(p.price * ratio * 100) / 100 }));
-  return scaled.slice(Math.max(0, scaled.length - rangeDays));
-}
+/* NOTE: there is intentionally NO price-history endpoint wrapper.
+ * The backend exposes no history API, and this app ships no demo curves —
+ * so CropDetail shows live min/avg/max + arrival info instead of a chart.
+ * Percent-change alerts use only genuinely observed live prices
+ * (noteObservation / getObservedChangePct below). */
 
 function persistAlerts(list) {
   try {
@@ -577,43 +519,50 @@ function persistAlerts(list) {
   }
 }
 
-function readStoredAlerts() {
+/* Alert rules live ONLY in the user's own storage. First run → [].
+ * No seeded demo rules, ever. */
+let alertRules = null;
+
+function loadAlertRules() {
+  if (alertRules !== null) return alertRules;
   try {
     const saved = JSON.parse(localStorage.getItem(ALERTS_KEY) || "null");
-    if (Array.isArray(saved)) setMockAlerts(saved);
+    alertRules = Array.isArray(saved) ? saved : [];
   } catch {
-    /* corrupted storage: keep defaults */
+    alertRules = [];
   }
+  return alertRules;
+}
+
+function saveAlertRules(next) {
+  alertRules = next;
+  persistAlerts(next);
 }
 
 export async function getAlerts() {
   await delay();
-  readStoredAlerts();
-  return MOCK_ALERTS;
+  return loadAlertRules();
 }
 
 export async function createAlert(data) {
   await delay(200);
   const alert = { id: Date.now(), active: true, ...data };
-  const next = [alert, ...MOCK_ALERTS];
-  setMockAlerts(next);
-  persistAlerts(next);
+  const next = [alert, ...loadAlertRules()];
+  saveAlertRules(next);
   return alert;
 }
 
 export async function deleteAlert(id) {
   await delay(120);
-  const next = MOCK_ALERTS.filter((a) => a.id !== id);
-  setMockAlerts(next);
-  persistAlerts(next);
+  const next = loadAlertRules().filter((a) => a.id !== id);
+  saveAlertRules(next);
   return { success: true };
 }
 
 export async function toggleAlert(id) {
   await delay(100);
-  const next = MOCK_ALERTS.map((a) => (a.id === id ? { ...a, active: !a.active } : a));
-  setMockAlerts(next);
-  persistAlerts(next);
+  const next = loadAlertRules().map((a) => (a.id === id ? { ...a, active: !a.active } : a));
+  saveAlertRules(next);
   return next.find((a) => a.id === id);
 }
 
