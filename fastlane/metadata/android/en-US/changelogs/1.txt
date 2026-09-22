@@ -1,0 +1,1 @@
+First Android release: live mandi prices, alerts with local notifications, Hindi/Bengali UI, branded icon and splash.

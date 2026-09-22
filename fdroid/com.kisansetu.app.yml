@@ -1,0 +1,40 @@
+# F-Droid submission draft for KisanSetu.
+# To publish: fork https://gitlab.com/fdroid/fdroiddata, copy this file to
+# metadata/com.kisansetu.app.yml, open a merge request. Do NOT commit this
+# file into fdroiddata yourself — F-Droid team reviews it.
+# Docs: https://f-droid.org/docs/Build_Metadata_Reference/
+Categories:
+  - Money
+License: MIT
+AuthorName: KisanSetu contributors
+SourceCode: https://github.com/niranjanmishra004/KisanSetu-App
+IssueTracker: https://github.com/niranjanmishra004/KisanSetu-App/issues
+
+AutoName: KisanSetu
+Summary: Live Indian mandi crop prices, no login
+Description: |-
+  KisanSetu shows live Indian mandi prices backed by Agmarknet data.
+
+  * Live prices for 400+ crops with min/avg/max, market and arrival date
+  * State filter and search in English, Hindi and Bengali
+  * Price history charts and on-device price alerts (local notifications)
+  * Works offline with last-known prices; no account, no tracking
+
+RepoType: git
+Repo: https://github.com/niranjanmishra004/KisanSetu-App.git
+
+Builds:
+  - versionName: '1.0'
+    versionCode: 1
+    commit: v1.0-fdroid
+    gradle:
+      - bundleRelease
+    srclibs: []
+    prebuild:
+      - npm ci
+      - npm run build
+      - npx cap sync android
+    builddir: android
+
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags

@@ -1,0 +1,29 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <!-- Monochrome sprout for Android 13+ themed icons: single-color white. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M9,25.5 H23" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M16,25 V13.5" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#00000000"
+        android:strokeWidth="1"
+        android:pathData="M15.5,19.5 C12,19.5 9.2,17.2 8.2,12.8 C12.5,12.8 15,15.2 15.5,19.5 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#00000000"
+        android:strokeWidth="1"
+        android:pathData="M16.5,16.8 C20,16.8 22.8,14.5 23.8,10.2 C19.5,10.2 17,12.5 16.5,16.8 Z" />
+</vector>

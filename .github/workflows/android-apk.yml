@@ -1,0 +1,59 @@
+name: Android APK (no Studio needed)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "android/**"
+      - "package-lock.json"
+      - "capacitor.config.json"
+      - ".github/workflows/android-apk.yml"
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build web + sync Capacitor
+        working-directory: .
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: F-Droid compliance check (no proprietary push/GMS)
+        working-directory: .
+        run: |
+          echo "--- must NOT contain push-notifications / gms / firebase ---"
+          ! grep -ri "push-notifications" package.json || (echo "BLOCKER: FCM dep present" && exit 1)
+          ! grep -ri "com.google.gms:google-services" android/build.gradle || (echo "BLOCKER: GMS classpath present" && exit 1)
+          ! ls android/app/google-services.json 2>/dev/null || (echo "BLOCKER: google-services.json present" && exit 1)
+          echo "FOSS check passed: local-notifications only, no Firebase."
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kisansetu-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk

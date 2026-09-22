@@ -1,0 +1,11 @@
+{
+  "appId": "com.kisansetu.app",
+  "appName": "KisanSetu",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#f7f3e8"
+  }
+}
