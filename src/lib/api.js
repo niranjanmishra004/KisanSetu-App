@@ -566,46 +566,115 @@ export async function toggleAlert(id) {
   return next.find((a) => a.id === id);
 }
 
+/* ---------------- Native alert notifications (Android) ----------------
+   Price rules are evaluated in-app (Alerts page) against live prices.
+   On native platforms a fired rule ALSO raises a system notification via
+   the Capacitor LocalNotifications plugin (no Firebase/FCM — F-Droid
+   safe). On web these are no-ops: the in-app feed is the notification.
+   Dynamic imports keep these chunks out of the web bundle. */
+
+/** Ask for notification permission at alert-creation time (best-effort). */
+export async function ensureAlertNotifications() {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    const current = await LocalNotifications.checkPermissions();
+    if (current.display === "granted") return true;
+    const req = await LocalNotifications.requestPermissions();
+    return req.display === "granted";
+  } catch {
+    return false;
+  }
+}
+
+/** Raise one system notification for a fired alert rule (best-effort). */
+export async function notifyAlertHit({ title, body }) {
+  if (!Capacitor.isNativePlatform()) return false;
+  try {
+    const { LocalNotifications } = await import("@capacitor/local-notifications");
+    const perm = await LocalNotifications.checkPermissions();
+    if (perm.display !== "granted") return false;
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          title: String(title || "KisanSetu"),
+          body: String(body || ""),
+          // int32 id — Date.now() overflows a Java int.
+          id: Math.floor(Date.now() % 2147483647),
+          schedule: { at: new Date(Date.now() + 500), allowWhileIdle: true },
+        },
+      ],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function getLocations() {
   await delay(60);
   return LOCATIONS;
 }
 
-export async function detectLocation() {
-  // Real browser geolocation + free reverse-geocoding (BigDataCloud, no key).
-  // Throws a coded error so callers can explain the exact cause:
-  // NO_API (needs HTTPS/localhost), DENIED (permission blocked),
-  // UNAVAILABLE (no GPS fix and no network location either),
-  // LOOKUP (GPS worked but place-name lookup failed — carries coords).
-  let pos = null;
+/** Native (Android) position via the Capacitor Geolocation plugin, which
+ *  drives the Android runtime permission flow. Throws coded errors matching
+ *  the browser path (DENIED / UNAVAILABLE) so callers handle both uniformly.
+ *  Dynamic import keeps this chunk out of the web bundle. */
+async function nativePosition(timeoutMs = 10000) {
+  const { Geolocation } = await import("@capacitor/geolocation");
   try {
-    pos = await new Promise((resolve, reject) => {
-      if (!("geolocation" in navigator)) {
-        const e = new Error("geolocation-unavailable");
-        e.code = "NO_API";
-        reject(e);
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        resolve,
-        (err) => {
-          const e = new Error("geolocation-failed");
-          e.code = err && err.code === 1 ? "DENIED" : "UNAVAILABLE";
-          reject(e);
-        },
-        {
-          timeout: 10000,
-          maximumAge: 60000,
-        }
-      );
-    });
+    const perm = await Geolocation.requestPermissions();
+    const state = perm && perm.location;
+    if (state && state !== "granted" && state !== "prompt") {
+      const e = new Error("native-geolocation-denied");
+      e.code = "DENIED";
+      throw e;
+    }
   } catch (err) {
-    // Device can't get a GPS fix (typical Linux desktop): fall back to
-    // network-based (IP) location instead of giving up.
-    if (err && err.code === "UNAVAILABLE") return await ipFallbackLocation(err);
-    throw err;
+    if (err && err.code === "DENIED") throw err;
+    /* permission check itself failed — still attempt a fix */
   }
-  const { latitude, longitude } = pos.coords;
+  try {
+    const pos = await Geolocation.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: timeoutMs,
+      maximumAge: 60000,
+    });
+    return pos.coords;
+  } catch (err) {
+    const e = new Error("native-geolocation-failed");
+    e.code = /denied|permission/i.test((err && err.message) || "") ? "DENIED" : "UNAVAILABLE";
+    throw e;
+  }
+}
+
+/** Browser position (web + WebView fallback). Same coded-error contract. */
+function browserPosition(timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    if (!("geolocation" in navigator)) {
+      const e = new Error("geolocation-unavailable");
+      e.code = "NO_API";
+      reject(e);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve(pos.coords),
+      (err) => {
+        const e = new Error("geolocation-failed");
+        e.code = err && err.code === 1 ? "DENIED" : "UNAVAILABLE";
+        reject(e);
+      },
+      {
+        timeout: timeoutMs,
+        maximumAge: 60000,
+      }
+    );
+  });
+}
+
+/** Coords → place name via free keyless services.
+ *  Throws LOOKUP carrying the raw coords when all services fail. */
+async function reverseToLocation(latitude, longitude) {
   // Place-name services, tried in order. If all fail, throw LOOKUP carrying
   // the raw coords so the caller can still save the real position.
   const services = [reverseBigDataCloud, reverseNominatim];
@@ -621,6 +690,35 @@ export async function detectLocation() {
   e.code = "LOOKUP";
   e.coords = { latitude, longitude };
   throw e;
+}
+
+export async function detectLocation() {
+  // Real device geolocation + free reverse-geocoding (BigDataCloud, no key).
+  // On Android the native plugin drives the system permission prompt;
+  // everywhere else the browser API is used. Throws a coded error so
+  // callers can explain the exact cause:
+  // NO_API (needs HTTPS/localhost), DENIED (permission blocked),
+  // UNAVAILABLE (no GPS fix and no network location either),
+  // LOOKUP (GPS worked but place-name lookup failed — carries coords).
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const coords = await nativePosition();
+      return await reverseToLocation(coords.latitude, coords.longitude);
+    } catch (err) {
+      // Explicit denial (or unresolvable place name): report it. Anything
+      // else falls through to the browser/IP fallbacks instead of giving up.
+      if (err && (err.code === "DENIED" || err.code === "LOOKUP")) throw err;
+    }
+  }
+  try {
+    const coords = await browserPosition();
+    return await reverseToLocation(coords.latitude, coords.longitude);
+  } catch (err) {
+    // Device can't get a GPS fix (typical Linux desktop): fall back to
+    // network-based (IP) location instead of giving up.
+    if (err && err.code === "UNAVAILABLE") return await ipFallbackLocation(err);
+    throw err;
+  }
 }
 
 async function fetchJson(url, ms = 8000) {

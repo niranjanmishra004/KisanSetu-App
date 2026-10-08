@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useOutletContext } from "react-router-dom";
-import { getAllPricesProgressive, getCachedPrices, dedupePriceRows, getLocations, detectLocation, saveLocation } from "../lib/api.js";
+import { getAllPricesProgressive, getCachedPrices, dedupePriceRows, storePrices, getLocations, detectLocation, saveLocation } from "../lib/api.js";
 import { LanguageSelect } from "../components/chrome.jsx";
 import { useLang } from "../lib/i18n.jsx";
 
@@ -64,6 +64,8 @@ export default function Home() {
       setLoaded(true);
       if (rows && rows.length) {
         setTrending(topTrending(rows));
+        // Persist for the next visit (Market seeds from the same cache).
+        storePrices("", rows);
       }
     }).catch(() => {
       if (!cancelled) setLoaded(true);
@@ -231,12 +233,12 @@ export default function Home() {
               <h3>{t("home.c1t")}</h3>
               <p className="muted text-sm mb-0">{t("home.c1d")}</p>
             </Link>
-            <Link className="card card-tight quick-card" to="/market">
+            <Link className="card card-tight quick-card" to="/alerts">
               <div className="qc-icon">
-                <i className="bi bi-graph-up-arrow" aria-hidden="true"></i>
+                <i className="bi bi-bell" aria-hidden="true"></i>
               </div>
-              <h3>{t("home.c4t")}</h3>
-              <p className="muted text-sm mb-0">{t("home.c4d")}</p>
+              <h3>{t("al.title")}</h3>
+              <p className="muted text-sm mb-0">{t("al.sub")}</p>
             </Link>
           </div>
         </div>
@@ -258,6 +260,9 @@ export default function Home() {
               <i className="bi bi-chevron-down" aria-hidden="true"></i>
             </button>
           </div>
+          {!loaded && trending.length > 0 && (
+            <p className="muted text-sm" style={{ marginBottom: 12 }}>{t("live.updating")}</p>
+          )}
           <div className={`tag-strip${trendOpen ? " open" : ""}`} id="trendingCrops">
             {trending.map(({ crop, price }) => (
               <Link key={crop.id} className="crop-card" to={`/crop?crop=${crop.id}`}>

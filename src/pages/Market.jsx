@@ -145,7 +145,7 @@ export default function Market() {
         <h1>{t("mkt.title")}</h1>
         <p className="muted" id="mktStatus">
           {!loaded
-            ? t("c.loading")
+            ? (allPrices.length ? t("live.updating") : t("c.loading"))
             : allPrices.length
               ? (stateSel
                   ? t("mkt.showingState", { state: stateSel })

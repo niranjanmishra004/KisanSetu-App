@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   getAlerts,
   deleteAlert,
@@ -7,6 +8,7 @@ import {
   deleteNotification,
   getCropPrice,
   getObservedChangePct,
+  notifyAlertHit,
 } from "../lib/api.js";
 import { useLang } from "../lib/i18n.jsx";
 
@@ -63,7 +65,7 @@ export default function Alerts() {
       }
 
       if (hit) {
-        await addNotification({
+        const entry = await addNotification({
           ruleId: rule.id,
           crop: rule.crop,
           condition: rule.condition,
@@ -74,6 +76,11 @@ export default function Alerts() {
           location: rule.location,
         });
         await deleteAlert(rule.id);
+        // Native system notification too (no-op on web — the feed above is it).
+        void notifyAlertHit({
+          title: `${cropName(rule.crop)} · ${t("al.title")}`,
+          body: messageFor(entry),
+        });
       }
     }
 
@@ -166,6 +173,11 @@ export default function Alerts() {
                 <i className="bi bi-bell" aria-hidden="true"></i>
               </div>
               <p>{hasRules ? t("al.quiet") : t("al.empty")}</p>
+              {!hasRules && (
+                <Link className="btn btn-primary mt-3" to="/market">
+                  {t("mkt.title")}
+                </Link>
+              )}
             </div>
           )}
         </div>

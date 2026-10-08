@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     });
     // Pass the upstream status through: 404 (unknown crop) stays 404 so the
     // client hides just that crop; only unreachable-upstream becomes a 502
-    // so the client knows it may fall back to demo data.
+    // so the client can render an honest "unavailable" state (never fake data).
     const body = await up.text();
     res.statusCode = up.status;
     res.setHeader("content-type", "application/json");

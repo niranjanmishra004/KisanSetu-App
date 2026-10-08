@@ -5,6 +5,7 @@ import {
   getCropPrice,
   getSavedLocation,
   createAlert,
+  ensureAlertNotifications,
 } from "../lib/api.js";
 import { useLang } from "../lib/i18n.jsx";
 import { Modal } from "../components/chrome.jsx";
@@ -80,6 +81,9 @@ export default function CropDetail() {
       threshold,
       unit: alertCondition.includes("percent") ? "%" : price.unit,
     });
+    // Ask for system-notification permission now (native only, best-effort),
+    // so a future hit can raise a phone notification when alerts are checked.
+    void ensureAlertNotifications();
     setAlertOpen(false);
     setAlertThreshold("");
     alert(t("crop.created"));

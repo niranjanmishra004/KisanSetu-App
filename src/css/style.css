@@ -12,6 +12,16 @@
   border-bottom: 1px solid var(--mustard-500);
 }
 
+/* ---------- Offline banner (Capacitor Network / browser online state) ---------- */
+.offline-banner {
+  background: var(--green-900);
+  color: #fff;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 8px var(--sp-4);
+}
+
 /* ---------- Navbar ---------- */
 .nav {
   background: var(--bg-alt);

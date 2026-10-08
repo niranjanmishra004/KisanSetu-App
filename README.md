@@ -28,7 +28,9 @@ Download the artifact, send it to your phone, tap to install.
 ## F-Droid status
 
 FOSS-only: MIT licensed, no Firebase / Google Play Services.
-Price alerts use on-device local notifications.
+Price alerts are evaluated on-device against live prices (no account,
+no tracking); fired alerts also raise a local system notification
+(no FCM, no network involved).
 Submission metadata draft: `fdroid/com.kisansetu.app.yml`
 Store listing text: `fastlane/metadata/android/en-US/`
 
@@ -37,5 +39,9 @@ Store listing text: `fastlane/metadata/android/en-US/`
 - On-device the app calls the FastAPI backend directly over HTTPS, so the
   backend must allow CORS origin `capacitor://localhost` (see farmer_api repo).
 - `api/` + `vercel.json` are web leftovers, unused by the native build.
+- Fonts (Fraunces, IBM Plex, Noto) and icons ship inside the bundle —
+  no Google Fonts / CDN requests, the UI renders fully offline.
+- Native plugins (Geolocation, LocalNotifications, Network) are
+  lazy-loaded on Android only; the web bundle contains none of that code.
 - Icons/splash are generated from `public/favicon.svg` (forest green +
   mustard sprout); vectors live in `android/app/src/main/res/`.
